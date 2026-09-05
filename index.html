@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#090a0f" />
+    <meta name="description" content="A quiet, interactive birthday candle experience." />
+    <title>一份生日礼物</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main id="app" aria-label="互动生日礼物">
+      <canvas id="scene" aria-hidden="true"></canvas>
+      <div class="vignette" aria-hidden="true"></div>
+      <div class="grain" aria-hidden="true"></div>
+
+      <section id="welcome" class="welcome" aria-labelledby="welcome-title">
+        <div class="welcome__eyebrow">A SMALL MOMENT FOR YOU</div>
+        <h1 id="welcome-title">点亮这份生日礼物</h1>
+        <p>在安静的光里，许一个愿望。</p>
+        <button id="enter" class="primary-button" type="button">
+          <span>开启生日礼物</span><span class="button-arrow" aria-hidden="true">↗</span>
+        </button>
+        <div class="welcome__note">建议打开声音 · 允许麦克风后可以吹灭蜡烛</div>
+      </section>
+
+      <header class="topbar" aria-label="场景控制">
+        <div class="brand-mark"><span class="brand-mark__dot"></span> BIRTHDAY / 01</div>
+        <div class="topbar__actions">
+          <button id="sound-toggle" class="icon-button" type="button" aria-label="关闭声音" title="关闭声音"><span class="sound-icon">◒</span></button>
+          <button id="mic-toggle" class="icon-button" type="button" aria-label="开启麦克风" title="开启麦克风"><span>⌁</span></button>
+        </div>
+      </header>
+
+      <section id="scene-copy" class="scene-copy" aria-live="polite">
+        <div class="scene-copy__line"></div>
+        <p class="scene-copy__overline">MAKE A WISH</p>
+        <p id="instruction" class="scene-copy__instruction">靠近一点，吹灭蜡烛</p>
+      </section>
+
+      <footer class="footer-note"><span id="mic-status">麦克风未开启</span><span class="footer-note__separator">·</span><span>TAKE YOUR TIME</span></footer>
+    </main>
+    <script type="module" src="main.js"></script>
+  </body>
+</html>
