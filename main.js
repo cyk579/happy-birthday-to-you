@@ -88,8 +88,8 @@ function frame(now) {
       const strength=held?1:input.strength;
       scene.setBlowStrength(strength);
       // Sustained breath integrates over time; a single clap cannot extinguish the candle.
-      charge=strength>.18?charge+dt*(held?1.25:strength*2.2):Math.max(0,charge-dt*.8);
-      if(charge>=.68) finish();
+      charge=strength>.18?charge+dt*(held?1:strength*2.2):Math.max(0,charge-dt*.8);
+      if(charge>=(held?.95:.68)) finish();
     }
     scene.update(started?dt:0);
   }

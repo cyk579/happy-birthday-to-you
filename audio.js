@@ -119,6 +119,7 @@ export class BirthdayAudio {
     try {
       const started = await this.start();
       if (!started || !this.audioContext) throw new Error("AudioContext unavailable");
+      // Voice-call noise filters can suppress the breath noise we need to detect.
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: true },
       });
