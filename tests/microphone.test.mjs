@@ -13,6 +13,8 @@ function eventTarget() {
   const handlers = new Map();
   return {
     dataset: {},
+    style: {},
+    getContext() { return null; },
     classList: { add() {}, toggle() {} },
     addEventListener(type, handler) { handlers.set(type, handler); },
     dispatch(type, event = {}) { handlers.get(type)?.(event); },
@@ -26,6 +28,8 @@ async function createExperience({ microphone = true, musicFailure = false } = {}
   let nextFrame;
   let extinguishedAt = null;
   let stopped = false;
+  let sceneDisposals = 0;
+  const cameraCalls = { starts: 0, stops: 0, disposals: 0 };
   const signal = { rms: 0.006, band: 0.001 };
   const elements = new Map();
   const element = (selector) => {
@@ -73,10 +77,16 @@ async function createExperience({ microphone = true, musicFailure = false } = {}
   const scene = {
     open() {},
     setBlowStrength() {},
+    setGestureControl() {},
+    rotateBy() {},
+    flip() {},
+    resetView() {},
     update() {},
-    dispose() {},
+    dispose() { sceneDisposals++; },
     extinguish() { extinguishedAt = now; },
   };
+  const documentSurface = { ...eventTarget(), hidden: false, querySelector: element };
+  const windowSurface = { ...eventTarget(), AudioContext };
   const context = vm.createContext({
     console,
     AbortController,
@@ -87,8 +97,8 @@ async function createExperience({ microphone = true, musicFailure = false } = {}
     }),
     performance: { now: () => now },
     requestAnimationFrame: (callback) => { nextFrame = callback; },
-    document: { ...eventTarget(), hidden: false, querySelector: element },
-    window: { ...eventTarget(), AudioContext },
+    document: documentSurface,
+    window: windowSurface,
     navigator: {
       mediaDevices: {
         async getUserMedia() { return { getTracks: () => [{ stop() { stopped = true; } }] }; },
@@ -100,11 +110,31 @@ async function createExperience({ microphone = true, musicFailure = false } = {}
   const sceneModule = new vm.SyntheticModule(['createNebulaScene'], function () {
     this.setExport('createNebulaScene', () => scene);
   }, { context, identifier: 'nebula-scene.js' });
+  const handModule = new vm.SyntheticModule(['HandTracking'], function () {
+    this.setExport('HandTracking', class {
+      constructor({ onState }) { this.onState = onState; }
+      async start() {
+        cameraCalls.starts++;
+        this.onState({ status: 'ready', message: '' });
+        return true;
+      }
+      stop() { cameraCalls.stops++; this.onState({ status: 'off', message: '' }); }
+      dispose() { cameraCalls.disposals++; }
+    });
+  }, { context, identifier: 'hand-tracking.js' });
+  const gestureModule = new vm.SyntheticModule(['GestureControls'], function () {
+    this.setExport('GestureControls', class {
+      update() { return { mode: 'searching', progress: 0 }; }
+      reset() {}
+    });
+  }, { context, identifier: 'gesture-controls.js' });
   const mainModule = new vm.SourceTextModule(mainSource, { context, identifier: 'main.js' });
   await mainModule.link((specifier) => {
     if (specifier === './audio.js') return audioModule;
     if (specifier === './music.js') return musicModule;
     if (specifier === './nebula-scene.js') return sceneModule;
+    if (specifier === './hand-tracking.js') return handModule;
+    if (specifier === './gesture-controls.js') return gestureModule;
     throw new Error(`Unexpected dependency: ${specifier}`);
   });
   await mainModule.evaluate();
@@ -126,6 +156,9 @@ async function createExperience({ microphone = true, musicFailure = false } = {}
   return {
     advance,
     element,
+    window: windowSurface,
+    cameraCalls,
+    get sceneDisposals() { return sceneDisposals; },
     get now() { return now; },
     get extinguishedAt() { return extinguishedAt; },
     get stopped() { return stopped; },
@@ -173,4 +206,29 @@ test('music loading failure leaves microphone calibration and blowing usable', a
   app.advance(0.8, 0.04, 0.002);
   assert.notEqual(app.extinguishedAt, null, 'a failed soundtrack must not block blowing');
   assert.equal(app.stopped, true);
+});
+
+test('a page restored from BFCache can reopen the camera and retains music preference', async () => {
+  const app = await createExperience({ microphone: false });
+  await new Promise((resolve) => setImmediate(resolve));
+  app.element('#camera-toggle').dispatch('click');
+  assert.equal(app.cameraCalls.starts, 1);
+  assert.equal(app.element('#app').dataset.musicState, 'playing');
+  app.window.dispatch('pagehide', { persisted: true });
+  assert.equal(app.cameraCalls.stops, 1);
+  assert.equal(app.cameraCalls.disposals, 0);
+  assert.equal(app.sceneDisposals, 0);
+  assert.equal(app.element('#app').dataset.musicState, 'muted');
+  app.window.dispatch('pageshow', { persisted: true });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(app.element('#app').dataset.musicState, 'playing');
+  app.element('#camera-toggle').dispatch('click');
+  assert.equal(app.cameraCalls.starts, 2);
+
+  app.element('#sound-toggle').dispatch('click');
+  app.window.dispatch('pagehide', { persisted: true });
+  app.window.dispatch('pageshow', { persisted: true });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(app.element('#app').dataset.musicState, 'muted', 'returning must respect a manual mute');
+  assert.equal(app.sceneDisposals, 0);
 });

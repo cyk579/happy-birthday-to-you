@@ -38,8 +38,33 @@
         <div class="topbar__actions">
           <button id="sound-toggle" class="icon-button" type="button" aria-label="关闭声音" title="关闭声音" aria-pressed="true"><span class="glyph glyph--volume" aria-hidden="true"></span></button>
           <button id="mic-toggle" class="icon-button" type="button" aria-label="开启麦克风" title="开启麦克风" aria-pressed="false"><span class="glyph glyph--mic" aria-hidden="true"></span></button>
+          <button id="camera-toggle" class="icon-button" type="button" aria-label="开启摄像头手势" title="开启摄像头手势" aria-pressed="false" aria-controls="gesture-panel"><span class="glyph glyph--camera" aria-hidden="true"></span></button>
         </div>
       </header>
+
+      <aside id="gesture-panel" class="gesture-panel" aria-label="手势控制" hidden>
+        <div class="gesture-panel__header">
+          <span><i class="gesture-dot" aria-hidden="true"></i> 隔空转动</span>
+          <button id="camera-close" class="gesture-close" type="button" aria-label="关闭摄像头手势" title="关闭摄像头手势">×</button>
+        </div>
+        <div class="gesture-panel__body">
+          <div class="gesture-preview">
+            <video id="hand-video" autoplay playsinline muted aria-hidden="true"></video>
+            <canvas id="hand-overlay" width="320" height="240" aria-hidden="true"></canvas>
+            <span class="gesture-preview__empty" aria-hidden="true">CAMERA</span>
+          </div>
+          <div class="gesture-help">
+            <p id="gesture-status" role="status">把一只手放到镜头前</p>
+            <p>张掌摆手 · 旋转与俯仰<br />比 V 停留 · 翻转<br />握拳停留 · 复位</p>
+            <div class="gesture-progress" aria-hidden="true"><span id="gesture-progress"></span></div>
+          </div>
+        </div>
+        <div class="gesture-panel__footer">
+          <span>画面仅在此设备处理</span>
+          <div><button id="gesture-flip" type="button">翻转</button><button id="gesture-reset" type="button">复位</button></div>
+        </div>
+      </aside>
+      <div id="hand-cursor" class="hand-cursor" aria-hidden="true" hidden></div>
 
       <section id="scene-copy" class="scene-copy" aria-live="polite">
         <div class="scene-copy__line"></div>

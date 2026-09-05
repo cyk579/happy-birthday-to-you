@@ -179,10 +179,12 @@ export function createNebulaScene(canvas) {
   const scene=new THREE.Scene();
   const camera=new THREE.PerspectiveCamera(32,1,.1,100);
   scene.add(camera);
+  const orientation=new THREE.Group();
+  scene.add(orientation);
   const root=new THREE.Group();
   root.position.y=-1.22;
   root.visible=false;
-  scene.add(root);
+  orientation.add(root);
   const density=matchMedia('(max-width: 620px)').matches ? .56 : 1;
   const cake=new Cloud();
   addTier(cake,{radius:1.62,bottom:0,height:.87,color:rose,highlight:roseLight,phase:.6},density);
@@ -241,6 +243,9 @@ export function createNebulaScene(canvas) {
   const clouds=[];
   scene.traverse(o=>{if(o.isPoints) clouds.push(o);});
   let time=0,angle=0,extinguishedAt=null,disposed=false,opened=false,reveal=0;
+  let gestureControl=false,targetAngle=0,pitch=0,targetPitch=0,flipAngle=0,targetFlip=0;
+  const xAxis=new THREE.Vector3(1,0,0),yAxis=new THREE.Vector3(0,1,0);
+  const yawRotation=new THREE.Quaternion(),flipRotation=new THREE.Quaternion();
   const pointer=new THREE.Vector2();
   const smoothPointer=new THREE.Vector2();
   const reducedMotion=matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -264,18 +269,59 @@ export function createNebulaScene(canvas) {
     ambient.visible=true;
     canvas.dataset.state='lit';
   }
+  function setGestureControl(enabled) {
+    if(disposed) return;
+    const next=Boolean(enabled);
+    if(next===gestureControl) return;
+    gestureControl=next;
+    targetAngle=angle;
+    if(!next) {targetPitch=0;targetFlip=0;}
+    canvas.dataset.gestureControl=String(next);
+  }
+  function rotateBy(yawDelta,pitchDelta) {
+    if(disposed||!opened||!gestureControl||!Number.isFinite(yawDelta)||!Number.isFinite(pitchDelta)) return;
+    targetAngle+=yawDelta;
+    targetPitch=THREE.MathUtils.clamp(targetPitch+pitchDelta,-Math.PI*65/180,Math.PI*65/180);
+  }
+  function flip() {
+    if(disposed||!opened||!gestureControl) return;
+    targetFlip=targetFlip===0?Math.PI:0;
+  }
+  function resetView() {
+    if(disposed) return;
+    targetAngle=Math.round(angle/TAU)*TAU;
+    targetPitch=0;
+    targetFlip=0;
+  }
   function setBlowStrength(strength) {flame.material.uniforms.uWind.value=THREE.MathUtils.clamp(strength,0,1);}
   function extinguish() {
     if(extinguishedAt!==null) return;
     extinguishedAt=time;
+    // Smoke leaves the candle in world space, even when the cake is upside down.
+    const smokeOrigin=smoke.getWorldPosition(new THREE.Vector3());
+    scene.add(smoke);
+    smoke.position.copy(smokeOrigin);
+    smoke.quaternion.identity();
     smoke.visible=true;
     confetti.visible=true;
   }
   function update(dt) {
     if(disposed) return;
     time+=dt;
-    if(opened) angle+=dt*(reducedMotion ? .035 : .17);
-    root.rotation.y=angle;
+    if(opened&&!gestureControl) {
+      const turn=dt*(reducedMotion ? .035 : .17);
+      angle+=turn;
+      targetAngle+=turn;
+    }
+    const damping=1-Math.exp(-dt*(reducedMotion?28:11));
+    angle+=(targetAngle-angle)*damping;
+    pitch+=(targetPitch-pitch)*damping;
+    flipAngle+=(targetFlip-flipAngle)*(1-Math.exp(-dt*(reducedMotion?28:6.5)));
+    // Keep the flip inside yaw so horizontal dragging keeps its direction upside down.
+    // The pivot stays at world origin; the original root offset preserves the opening view.
+    orientation.quaternion.setFromAxisAngle(xAxis,pitch)
+      .multiply(yawRotation.setFromAxisAngle(yAxis,angle))
+      .multiply(flipRotation.setFromAxisAngle(xAxis,flipAngle));
     smoothPointer.lerp(pointer,1-Math.exp(-dt*3));
     camera.position.set(reducedMotion?0:smoothPointer.x*.13,distance*.13,distance);
     camera.lookAt(0,0,0);
@@ -307,6 +353,9 @@ export function createNebulaScene(canvas) {
     }
     // Read-only diagnostics allow checking motion without relying on a single screenshot.
     canvas.dataset.rotation=angle.toFixed(4);
+    canvas.dataset.pitch=pitch.toFixed(4);
+    canvas.dataset.flip=flipAngle.toFixed(4);
+    canvas.dataset.gestureControl=String(gestureControl);
     canvas.dataset.state=!opened?'intro':extinguishedAt===null?'lit':'extinguished';
     canvas.dataset.reveal=reveal.toFixed(3);
     renderer.render(scene,camera);
@@ -316,9 +365,12 @@ export function createNebulaScene(canvas) {
   window.addEventListener('pointermove',pointerMove);
   resize();
   canvas.dataset.state='intro';
+  canvas.dataset.pitch='0.0000';
+  canvas.dataset.flip='0.0000';
+  canvas.dataset.gestureControl='false';
   canvas.dataset.introPoints=String(invitation.geometry.attributes.position.count);
   canvas.dataset.points=String(clouds.reduce((sum,p)=>sum+p.geometry.attributes.position.count,0));
-  return {open,update,setBlowStrength,extinguish,dispose(){
+  return {open,update,setBlowStrength,extinguish,setGestureControl,rotateBy,flip,resetView,dispose(){
     disposed=true;
     window.removeEventListener('resize',resize);
     window.removeEventListener('pointermove',pointerMove);
