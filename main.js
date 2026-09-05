@@ -11,7 +11,7 @@ const micToggle=document.querySelector('#mic-toggle');
 const micStatus=document.querySelector('#mic-status');
 const instruction=document.querySelector('#instruction');
 
-let started=false,extinguished=false,muted=false,micState='off';
+let started=false,extinguished=false,muted=false,micState='off',musicState='idle';
 let held=false,charge=0,previous=performance.now();
 let scene;
 const audio=new BirthdayAudio(({status,message})=>{
@@ -23,8 +23,27 @@ const audio=new BirthdayAudio(({status,message})=>{
   micToggle.setAttribute('aria-label',label);
   micToggle.setAttribute('aria-pressed',String(status==='on'||status==='calibrating'));
   micToggle.title=label;
-  audio.setDucked(status==='on'||status==='calibrating');
+  audio.setDucked(status==='requesting'||status==='on'||status==='calibrating');
+  updateSoundControl();
+},({status})=>{
+  musicState=status;
+  app.dataset.musicState=status;
+  updateSoundControl();
 });
+
+function updateSoundControl() {
+  const listening=micState==='requesting'||micState==='calibrating'||micState==='on';
+  const label=musicState==='error'?'重新播放音乐':muted?'开启音乐':
+    listening?'音乐已暂停，关闭麦克风后恢复':musicState==='loading'?'音乐正在准备，点击关闭':'关闭音乐';
+  soundToggle.classList.toggle('is-active',musicState==='playing'&&!muted&&!listening);
+  soundToggle.classList.toggle('is-muted',muted||listening);
+  soundToggle.setAttribute('aria-pressed',String(!muted));
+  soundToggle.setAttribute('aria-busy',String(musicState==='loading'));
+  soundToggle.setAttribute('aria-label',label);
+  soundToggle.title=label;
+}
+app.dataset.musicState=musicState;
+updateSoundControl();
 
 try {scene=createNebulaScene(canvas);} catch(error) {
   enter.disabled=true;
@@ -51,13 +70,9 @@ micToggle.addEventListener('click',()=>{
 
 soundToggle.addEventListener('click',()=>{
   if(!started) return;
-  muted=!muted;
+  muted=musicState==='error'?false:!muted;
   audio.setMuted(muted);
-  soundToggle.classList.toggle('is-active',!muted);
-  soundToggle.classList.toggle('is-muted',muted);
-  soundToggle.setAttribute('aria-pressed',String(!muted));
-  soundToggle.setAttribute('aria-label',muted?'开启声音':'关闭声音');
-  soundToggle.title=muted?'开启声音':'关闭声音';
+  updateSoundControl();
 });
 
 function finish() {

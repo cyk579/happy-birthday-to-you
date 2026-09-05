@@ -1,13 +1,16 @@
+import { AmbientMusic } from './music.js';
+
 /**
  * Small WebAudio controller for the birthday scene.
  * Microphone samples stay in the browser and are never recorded or uploaded.
  */
 export class BirthdayAudio {
-  constructor(onMicState = () => {}) {
+  constructor(onMicState = () => {}, onMusicState = () => {}) {
     this.onMicState = typeof onMicState === "function" ? onMicState : () => {};
+    this.onMusicState = typeof onMusicState === "function" ? onMusicState : () => {};
     this.audioContext = null;
-    this.ambientGain = null;
-    this.ambientNodes = [];
+    this.music = null;
+    this._startPromise = null;
     this.micStream = null;
     this.micSource = null;
     this.analyser = null;
@@ -34,76 +37,55 @@ export class BirthdayAudio {
     this.onMicState({ status, message });
   }
 
-  /** Create/resume the context and start a quiet, continuously evolving sound bed. */
-  async start() {
-    if (this._disposed) return false;
+  /** Unlock audio on the user gesture; music loading never blocks the microphone. */
+  start() {
+    if (this._disposed) return Promise.resolve(false);
+    if (this._startPromise) return this._startPromise;
     try {
       if (!this.audioContext) {
         const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
         if (!AudioContextCtor) throw new Error("Web Audio API unavailable");
         this.audioContext = new AudioContextCtor();
       }
-      if (this.audioContext.state === "suspended") await this.audioContext.resume();
-      if (!this.ambientGain) this._createAmbient();
-      return true;
+      const ctx = this.audioContext;
+      if (!this.music) {
+        this.music = new AmbientMusic(ctx, this.onMusicState);
+        this._applyMusicLevel();
+      }
+      // Invoke resume during the gesture, then share it across concurrent callers.
+      const resumed = ctx.state === "suspended" ? ctx.resume() : Promise.resolve();
+      this._startPromise = Promise.resolve(resumed).then(() => {
+        if (this._disposed || this.audioContext !== ctx || ctx.state === "closed") return false;
+        this._applyMusicLevel();
+        void this.music.start();
+        return true;
+      }).catch(() => {
+        if (!this._disposed) this.onMusicState({ status: "error" });
+        return false;
+      }).finally(() => { this._startPromise = null; });
+      return this._startPromise;
     } catch (error) {
       // Audio is optional: the visual experience can continue without it.
       this._setMicState("error", "音频无法启动，但仍可继续体验");
-      return false;
+      this.onMusicState({ status: "error" });
+      return Promise.resolve(false);
     }
   }
 
-  _createAmbient() {
-    const ctx = this.audioContext;
-    this.ambientGain = ctx.createGain();
-    this.ambientGain.gain.value = 0;
-    this.ambientGain.connect(ctx.destination);
-
-    // Three detuned drones plus very slow gain motion make an atmosphere without
-    // a short musical loop that would become obvious over time.
-    const voices = [
-      [196.0, 0.014, 0.031],
-      [246.94, 0.010, 0.047],
-      [293.66, 0.007, 0.067],
-    ];
-    for (const [frequency, level, lfoRate] of voices) {
-      const voice = ctx.createGain();
-      voice.gain.value = level;
-      const oscillator = ctx.createOscillator();
-      oscillator.type = "sine";
-      oscillator.frequency.value = frequency;
-
-      const lfo = ctx.createOscillator();
-      const lfoGain = ctx.createGain();
-      lfo.type = "sine";
-      lfo.frequency.value = lfoRate;
-      lfoGain.gain.value = level * 0.28;
-      lfo.connect(lfoGain).connect(voice.gain);
-
-      oscillator.connect(voice).connect(this.ambientGain);
-      oscillator.start();
-      lfo.start();
-      this.ambientNodes.push(oscillator, lfo, lfoGain, voice);
-    }
-    this._applyAmbientLevel(0.045, 0.8);
-  }
-
-  _applyAmbientLevel(level, ramp = 0.18) {
-    if (!this.ambientGain || !this.audioContext) return;
-    const target = this._muted ? 0 : level * (this._ducked ? 0.22 : 1);
-    const now = this.audioContext.currentTime;
-    this.ambientGain.gain.cancelScheduledValues(now);
-    this.ambientGain.gain.setTargetAtTime(target, now, Math.max(0.015, ramp));
+  _applyMusicLevel(ramp = this._muted || this._ducked ? 0.08 : 1.8) {
+    if (this._disposed) return;
+    this.music?.setLevel(this._muted || this._ducked ? 0 : 0.5, ramp);
   }
 
   setMuted(muted) {
     this._muted = Boolean(muted);
-    this._applyAmbientLevel(0.045, 0.12);
+    this._applyMusicLevel(this._muted ? 0.12 : 1.8);
+    if (!this._muted && this.audioContext && !this._disposed) void this.start();
   }
 
   setDucked(ducked) {
     this._ducked = Boolean(ducked);
-    this._applyAmbientLevel(0.045, 0.2);
+    this._applyMusicLevel(this._ducked ? 0.08 : 1.8);
   }
 
   /** Request microphone permission and prepare an analyser; no audio is emitted. */
@@ -118,6 +100,7 @@ export class BirthdayAudio {
     this._setMicState("requesting", "正在请求麦克风权限");
     try {
       const started = await this.start();
+      if (requestToken !== this._micRequestToken || this._disposed) return false;
       if (!started || !this.audioContext) throw new Error("AudioContext unavailable");
       // Voice-call noise filters can suppress the breath noise we need to detect.
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -144,6 +127,7 @@ export class BirthdayAudio {
       this._setMicState("calibrating", "请保持安静，正在校准环境声音");
       return true;
     } catch (error) {
+      if (requestToken !== this._micRequestToken || this._disposed) return false;
       this.disableMic(false);
       const denied = error?.name === "NotAllowedError" || error?.name === "SecurityError";
       this._setMicState("error", denied ? "麦克风权限未开启，可稍后重试" : "麦克风暂时不可用");
@@ -222,17 +206,12 @@ export class BirthdayAudio {
 
   dispose() {
     if (this._disposed) return;
-    this.disableMic(false);
-    for (const node of this.ambientNodes) {
-      try { node.stop?.(); } catch (_) { /* already stopped */ }
-      try { node.disconnect?.(); } catch (_) { /* disconnected */ }
-    }
-    this.ambientNodes = [];
-    this.ambientGain?.disconnect();
-    this.ambientGain = null;
-    this.audioContext?.close?.();
-    this.audioContext = null;
     this._disposed = true;
+    this.disableMic(false);
+    this.music?.dispose();
+    this.music = null;
+    this.audioContext?.close?.()?.catch?.(() => {});
+    this.audioContext = null;
     this._setMicState("off", "音频已释放");
   }
 }

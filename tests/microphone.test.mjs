@@ -3,14 +3,16 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import vm from 'node:vm';
 
-const [mainSource, audioSource] = await Promise.all([
+const [mainSource, audioSource, musicSource] = await Promise.all([
   readFile(new URL('../main.js', import.meta.url), 'utf8'),
   readFile(new URL('../audio.js', import.meta.url), 'utf8'),
+  readFile(new URL('../music.js', import.meta.url), 'utf8'),
 ]);
 
 function eventTarget() {
   const handlers = new Map();
   return {
+    dataset: {},
     classList: { add() {}, toggle() {} },
     addEventListener(type, handler) { handlers.set(type, handler); },
     dispatch(type, event = {}) { handlers.get(type)?.(event); },
@@ -19,7 +21,7 @@ function eventTarget() {
   };
 }
 
-async function createExperience({ microphone = true } = {}) {
+async function createExperience({ microphone = true, musicFailure = false } = {}) {
   let now = 0;
   let nextFrame;
   let extinguishedAt = null;
@@ -30,7 +32,13 @@ async function createExperience({ microphone = true } = {}) {
     if (!elements.has(selector)) elements.set(selector, eventTarget());
     return elements.get(selector);
   };
-  const param = () => ({ value: 0, cancelScheduledValues() {}, setTargetAtTime() {} });
+  const param = () => ({
+    value: 0,
+    cancelScheduledValues() {},
+    setTargetAtTime() {},
+    setValueAtTime() {},
+    linearRampToValueAtTime() {},
+  });
   const audioNode = () => ({
     connect(target) { return target; },
     disconnect() {},
@@ -46,7 +54,9 @@ async function createExperience({ microphone = true } = {}) {
     destination = {};
     createGain = audioNode;
     createOscillator = audioNode;
+    createBufferSource = audioNode;
     createMediaStreamSource = audioNode;
+    async decodeAudioData() { return { duration: 180 }; }
     createAnalyser() {
       return {
         ...audioNode(),
@@ -69,6 +79,12 @@ async function createExperience({ microphone = true } = {}) {
   };
   const context = vm.createContext({
     console,
+    AbortController,
+    fetch: async () => ({
+      ok: !musicFailure,
+      status: musicFailure ? 503 : 200,
+      arrayBuffer: async () => new ArrayBuffer(8),
+    }),
     performance: { now: () => now },
     requestAnimationFrame: (callback) => { nextFrame = callback; },
     document: { ...eventTarget(), hidden: false, querySelector: element },
@@ -80,12 +96,14 @@ async function createExperience({ microphone = true } = {}) {
     },
   });
   const audioModule = new vm.SourceTextModule(audioSource, { context, identifier: 'audio.js' });
+  const musicModule = new vm.SourceTextModule(musicSource, { context, identifier: 'music.js' });
   const sceneModule = new vm.SyntheticModule(['createNebulaScene'], function () {
     this.setExport('createNebulaScene', () => scene);
   }, { context, identifier: 'nebula-scene.js' });
   const mainModule = new vm.SourceTextModule(mainSource, { context, identifier: 'main.js' });
   await mainModule.link((specifier) => {
     if (specifier === './audio.js') return audioModule;
+    if (specifier === './music.js') return musicModule;
     if (specifier === './nebula-scene.js') return sceneModule;
     throw new Error(`Unexpected dependency: ${specifier}`);
   });
@@ -148,4 +166,11 @@ test('manual hold needs longer than half a second and finishes within one second
   app.advance(0.5);
   assert.notEqual(app.extinguishedAt, null);
   assert.ok(app.extinguishedAt >= 950 && app.extinguishedAt <= 1000);
+});
+
+test('music loading failure leaves microphone calibration and blowing usable', async () => {
+  const app = await createExperience({ musicFailure: true });
+  app.advance(1.5, 0.04, 0.002);
+  assert.notEqual(app.extinguishedAt, null, 'a failed soundtrack must not block blowing');
+  assert.equal(app.stopped, true);
 });
