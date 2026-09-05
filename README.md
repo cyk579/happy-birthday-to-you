@@ -1,6 +1,6 @@
 # Birthday Cake - Interactive Gift
 
-当前分享名称：[happy birthday to you](https://cyk579.github.io/birthday-cake/)，地址为 `https://cyk579.github.io/birthday-cake/`。
+当前分享名称：[happy birthday to you](https://cyk579.github.io/happy-birthday-to-you/)，地址为 `https://cyk579.github.io/happy-birthday-to-you/`。
 
 一个可以直接部署到 GitHub Pages 的生日蛋糕互动网页。开场是一封星光邀请：银蓝与暖玫瑰色的星尘缓缓流动，本地字体与精简排版呈现生日祝福。点击「开启生日礼物」后，星尘散开，在同一个 Three.js 场景里逐渐显现没有底盘的两层粒子蛋糕。蛋糕与蜡烛持续缓慢旋转，微粒、光晕和火焰保持细微的动态。
 
@@ -36,10 +36,10 @@ npx serve .
 
 ## GitHub Pages 部署
 
-1. 在 GitHub 新建仓库，例如 `birthday-cake`。
+1. 在 GitHub 新建仓库，例如 `happy-birthday-to-you`。
 2. 将项目代码与资源上传到仓库根目录，保持目录层级；必须包含 `gesture-worker.js`、完整的 `vendor/mediapipe/` 和 `assets/models/`，以及原有音乐、字体等资源。原始参考视频、个人截图与 `artifacts/` 验证文件不用于部署，已在 `.gitignore` 中排除。
 3. 打开仓库的 **Settings -> Pages**，将 Source 设为 **Deploy from a branch**，选择 `main` 分支与 `/ (root)`。
-4. 等待 GitHub Pages 完成构建，访问 `https://<你的用户名>.github.io/birthday-cake/`。
+4. 等待 GitHub Pages 完成构建，访问 `https://<你的用户名>.github.io/happy-birthday-to-you/`。
 
 页面使用 Three.js 的 jsDelivr CDN，不需要安装运行时或构建步骤。手势识别使用项目内的官方 MediaPipe SDK 和模型，部署后从同一网站加载，无需再访问外部模型服务器。代码中的脚本、样式和模块引用使用相对路径，因此部署到仓库子路径时仍可加载。生产部署请使用 HTTPS，这样移动端浏览器才能正常请求麦克风和摄像头权限。
 
