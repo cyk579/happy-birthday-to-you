@@ -33,9 +33,15 @@ const vertexShader = `
     } else if (uKind < 3.5) {
       p = position * uAge;
       p.y -= .48 * uAge * uAge;
-    } else {
+    } else if (uKind < 4.5) {
       p.y += sin(uTime*.22+phase)*.12;
       p.x += cos(uTime*.18+phase)*.1;
+    } else {
+      p.x += sin(p.y*5.0 + uTime*.14 + phase)*.007;
+      p.y += cos(p.x*4.0 - uTime*.11 + phase)*.009;
+      p.xy *= 1.0 + uAge*.46;
+      p.xy += sign(p.xy)*uAge*.09;
+      p.z += uAge*(.35+aSeed*.3);
     }
     vec4 mv = modelViewMatrix * vec4(p, 1.0);
     gl_Position = projectionMatrix * mv;
@@ -130,27 +136,67 @@ function addTier(cloud, {radius,bottom,height,color,highlight,phase}, density) {
   }
 }
 
+function createInvitationCloud(mobile) {
+  const cloud=new Cloud();
+  const count=mobile?8200:14800;
+  const curves=[
+    new THREE.CubicBezierCurve3(
+      new THREE.Vector3(-1.2,-.85,0),new THREE.Vector3(-.8,1.5,0),
+      new THREE.Vector3(-.1,.5,0),new THREE.Vector3(1.15,1.1,0)),
+    new THREE.CubicBezierCurve3(
+      new THREE.Vector3(-1.2,-1.06,0),new THREE.Vector3(.4,-.64,0),
+      new THREE.Vector3(1.1,-1.04,0),new THREE.Vector3(1.15,.7,0))
+  ];
+  // Sample narrow filaments and diffuse dust around two viewport-relative curves.
+  // Their open middle stays clear for the invitation on portrait and landscape screens.
+  for(let i=0;i<count;i++) {
+    if(i<count*.965) {
+      const strand=i%2,t=Math.random(),curve=curves[strand];
+      const p=curve.getPoint(t),tangent=curve.getTangent(t);
+      const diffuse=Math.random()<.24;
+      const width=(diffuse?.12:.038)*(.6+.4*Math.sin(t*Math.PI));
+      const offset=gaussian()*width+Math.sin(t*29+strand*3)*.016;
+      p.x-=tangent.y*offset;
+      p.y+=tangent.x*offset;
+      const color=strand===0?(Math.random()<.16?roseLight:silverLight):
+        (Math.random()<.22?silverLight:roseLight);
+      const alpha=diffuse?.08+Math.random()*.12:.25+Math.random()*.4;
+      cloud.add(p.x,p.y,gaussian()*.13,color,alpha*1.3,1.0+Math.random()*1.35);
+    } else {
+      const x=(Math.random()-.5)*2.25,y=(Math.random()-.5)*2.25;
+      const center=Math.abs(x)<.48&&y>-.6&&y<.5;
+      cloud.add(x,y,Math.random()*.6-.3,i%3? silverLight:roseLight,
+        center?.035:.12+Math.random()*.19,1+Math.random()*1.8);
+    }
+  }
+  return cloud.mesh(5);
+}
+
 export function createNebulaScene(canvas) {
   const renderer=new THREE.WebGLRenderer({canvas,alpha:true,antialias:true,powerPreference:'high-performance'});
   renderer.setClearColor(0x000000,0);
   renderer.outputColorSpace=THREE.SRGBColorSpace;
   const scene=new THREE.Scene();
   const camera=new THREE.PerspectiveCamera(32,1,.1,100);
+  scene.add(camera);
   const root=new THREE.Group();
   root.position.y=-1.22;
+  root.visible=false;
   scene.add(root);
   const density=matchMedia('(max-width: 620px)').matches ? .56 : 1;
   const cake=new Cloud();
   addTier(cake,{radius:1.62,bottom:0,height:.87,color:rose,highlight:roseLight,phase:.6},density);
   addTier(cake,{radius:1.24,bottom:.89,height:.69,color:silver,highlight:silverLight,phase:1.7},density);
-  root.add(cake.mesh());
+  const cakePoints=cake.mesh();
+  root.add(cakePoints);
 
   const candle=new Cloud();
   for(let i=0;i<4200*density;i++) {
     const a=Math.random()*TAU,y=Math.random()*.43,r=.072+gaussian()*.012;
     candle.add(Math.cos(a)*r,1.60+y,Math.sin(a)*r,gold,.38,1.1+Math.random()*1.1);
   }
-  root.add(candle.mesh());
+  const candlePoints=candle.mesh();
+  root.add(candlePoints);
 
   const fire=new Cloud();
   for(let i=0;i<7000*density;i++) {
@@ -182,12 +228,21 @@ export function createNebulaScene(canvas) {
 
   const dust=new Cloud();
   for(let i=0;i<380;i++) dust.add((Math.random()-.5)*8,(Math.random()-.5)*5,(Math.random()-.5)*5,[.65,.64,.75],.15,1+Math.random());
-  scene.add(dust.mesh(4));
+  const ambient=dust.mesh(4);
+  ambient.visible=false;
+  scene.add(ambient);
+
+  const invitation=createInvitationCloud(density<1);
+  invitation.position.z=-6;
+  camera.add(invitation);
+  const revealPoints=[cakePoints,candlePoints,flame,ambient];
+  revealPoints.forEach(p=>{p.material.uniforms.uOpacity.value=0;});
 
   const clouds=[];
   scene.traverse(o=>{if(o.isPoints) clouds.push(o);});
-  let time=0,angle=0,extinguishedAt=null,disposed=false;
+  let time=0,angle=0,extinguishedAt=null,disposed=false,opened=false,reveal=0;
   const pointer=new THREE.Vector2();
+  const smoothPointer=new THREE.Vector2();
   const reducedMotion=matchMedia('(prefers-reduced-motion: reduce)').matches;
   let distance=7.4;
   function resize() {
@@ -198,8 +253,16 @@ export function createNebulaScene(canvas) {
     camera.aspect=width/height;
     const tan=Math.tan(THREE.MathUtils.degToRad(camera.fov/2));
     distance=Math.max(6.9,3.85/(2*tan*camera.aspect));
+    invitation.scale.set(6*tan*camera.aspect,6*tan,1);
     camera.updateProjectionMatrix();
     clouds.forEach(p=>{p.material.uniforms.uPixels.value=dpr*height/720;});
+  }
+  function open() {
+    if(opened||disposed) return;
+    opened=true;
+    root.visible=true;
+    ambient.visible=true;
+    canvas.dataset.state='lit';
   }
   function setBlowStrength(strength) {flame.material.uniforms.uWind.value=THREE.MathUtils.clamp(strength,0,1);}
   function extinguish() {
@@ -211,14 +274,28 @@ export function createNebulaScene(canvas) {
   function update(dt) {
     if(disposed) return;
     time+=dt;
-    angle+=dt*(reducedMotion ? .035 : .17);
+    if(opened) angle+=dt*(reducedMotion ? .035 : .17);
     root.rotation.y=angle;
-    camera.position.set(reducedMotion?0:pointer.x*.13,distance*.13,distance);
+    smoothPointer.lerp(pointer,1-Math.exp(-dt*3));
+    camera.position.set(reducedMotion?0:smoothPointer.x*.13,distance*.13,distance);
     camera.lookAt(0,0,0);
     clouds.forEach(p=>{p.material.uniforms.uTime.value=time;});
+    if(invitation.visible) {
+      invitation.material.uniforms.uTime.value=reducedMotion?0:time;
+      invitation.position.x=reducedMotion?0:smoothPointer.x*.035;
+      invitation.position.y=reducedMotion?0:-smoothPointer.y*.025;
+    }
+    if(opened) reveal=Math.min(1,reveal+dt/(reducedMotion?.2:2.3));
+    const cakeOpacity=THREE.MathUtils.smoothstep(reveal,.12,.98);
+    revealPoints.forEach(p=>{p.material.uniforms.uOpacity.value=cakeOpacity;});
+    if(invitation.visible&&opened) {
+      invitation.material.uniforms.uAge.value=reducedMotion?0:reveal*reveal;
+      invitation.material.uniforms.uOpacity.value=1-THREE.MathUtils.smoothstep(reveal,.03,.84);
+      if(reveal===1) invitation.visible=false;
+    }
     if(extinguishedAt!==null) {
       const age=time-extinguishedAt;
-      flame.material.uniforms.uOpacity.value=Math.max(0,1-age/.45);
+      flame.material.uniforms.uOpacity.value=cakeOpacity*Math.max(0,1-age/.45);
       flame.scale.y=Math.max(.02,1-age/.55);
       flame.visible=age<.55;
       smoke.material.uniforms.uAge.value=age;
@@ -230,15 +307,18 @@ export function createNebulaScene(canvas) {
     }
     // Read-only diagnostics allow checking motion without relying on a single screenshot.
     canvas.dataset.rotation=angle.toFixed(4);
-    canvas.dataset.state=extinguishedAt===null?'lit':'extinguished';
+    canvas.dataset.state=!opened?'intro':extinguishedAt===null?'lit':'extinguished';
+    canvas.dataset.reveal=reveal.toFixed(3);
     renderer.render(scene,camera);
   }
   function pointerMove(e) {pointer.set(e.clientX/innerWidth-.5,e.clientY/innerHeight-.5);}
   window.addEventListener('resize',resize);
   window.addEventListener('pointermove',pointerMove);
   resize();
+  canvas.dataset.state='intro';
+  canvas.dataset.introPoints=String(invitation.geometry.attributes.position.count);
   canvas.dataset.points=String(clouds.reduce((sum,p)=>sum+p.geometry.attributes.position.count,0));
-  return {update,setBlowStrength,extinguish,dispose(){
+  return {open,update,setBlowStrength,extinguish,dispose(){
     disposed=true;
     window.removeEventListener('resize',resize);
     window.removeEventListener('pointermove',pointerMove);

@@ -5,6 +5,7 @@ const app=document.querySelector('#app');
 const canvas=document.querySelector('#scene');
 const enter=document.querySelector('#enter');
 const welcome=document.querySelector('#welcome');
+const controls=document.querySelector('#scene-controls');
 const soundToggle=document.querySelector('#sound-toggle');
 const micToggle=document.querySelector('#mic-toggle');
 const micStatus=document.querySelector('#mic-status');
@@ -20,6 +21,7 @@ const audio=new BirthdayAudio(({status,message})=>{
   micToggle.disabled=status==='requesting';
   const label=status==='on'||status==='calibrating'?'暂停麦克风':'开启麦克风';
   micToggle.setAttribute('aria-label',label);
+  micToggle.setAttribute('aria-pressed',String(status==='on'||status==='calibrating'));
   micToggle.title=label;
   audio.setDucked(status==='on'||status==='calibrating');
 });
@@ -34,7 +36,9 @@ enter.addEventListener('click',()=>{
   if(!scene||started) return;
   started=true;
   welcome.inert=true;
+  controls.inert=false;
   app.classList.add('is-open');
+  scene.open();
   audio.start();
   instruction.textContent='许一个愿望';
 });
@@ -50,6 +54,7 @@ soundToggle.addEventListener('click',()=>{
   muted=!muted;
   audio.setMuted(muted);
   soundToggle.classList.toggle('is-active',!muted);
+  soundToggle.classList.toggle('is-muted',muted);
   soundToggle.setAttribute('aria-pressed',String(!muted));
   soundToggle.setAttribute('aria-label',muted?'开启声音':'关闭声音');
   soundToggle.title=muted?'开启声音':'关闭声音';
@@ -76,7 +81,10 @@ canvas.addEventListener('pointerup',release);
 canvas.addEventListener('pointercancel',release);
 canvas.addEventListener('lostpointercapture',release);
 window.addEventListener('blur',release);
-window.addEventListener('keydown',e=>{if(e.code==='Space'&&started&&!extinguished){e.preventDefault();held=true;}});
+window.addEventListener('keydown',e=>{
+  if(e.target?.closest?.('button, a, input, textarea, select, [contenteditable]')) return;
+  if(e.code==='Space'&&started&&!extinguished){e.preventDefault();held=true;}
+});
 window.addEventListener('keyup',e=>{if(e.code==='Space')release();});
 
 function frame(now) {
@@ -91,7 +99,7 @@ function frame(now) {
       charge=strength>.18?charge+dt*(held?1:strength*2.2):Math.max(0,charge-dt*.8);
       if(charge>=(held?.95:.68)) finish();
     }
-    scene.update(started?dt:0);
+    scene.update(dt);
   }
   requestAnimationFrame(frame);
 }

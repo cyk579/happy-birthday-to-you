@@ -3,35 +3,44 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="theme-color" content="#090a0f" />
-    <meta name="description" content="A quiet, interactive birthday candle experience." />
-    <title>一份生日礼物</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500&display=swap" rel="stylesheet" />
+    <meta name="theme-color" content="#07080c" />
+    <meta name="description" content="把星光藏进这一刻，把所有美好都送给你。" />
+    <title>星光来信 · 一份生日礼物</title>
+    <link rel="preload" href="assets/serif-sc.ttf" as="font" type="font/ttf" crossorigin />
+    <link rel="preload" href="assets/cormorant-italic.ttf" as="font" type="font/ttf" crossorigin />
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
     <main id="app" aria-label="互动生日礼物">
       <canvas id="scene" aria-hidden="true"></canvas>
       <div class="vignette" aria-hidden="true"></div>
-      <div class="grain" aria-hidden="true"></div>
-
       <section id="welcome" class="welcome" aria-labelledby="welcome-title">
-        <div class="welcome__eyebrow">A SMALL MOMENT FOR YOU</div>
-        <h1 id="welcome-title">点亮这份生日礼物</h1>
-        <p>在安静的光里，许一个愿望。</p>
-        <button id="enter" class="primary-button" type="button">
-          <span>开启生日礼物</span><span class="button-arrow" aria-hidden="true">↗</span>
-        </button>
-        <div class="welcome__note">建议打开声音 · 允许麦克风后可以吹灭蜡烛</div>
+        <header class="invitation-header">
+          <div class="invitation-brand"><span class="glyph glyph--sparkles" aria-hidden="true"></span>星光来信</div>
+          <span class="invitation-edition">A BIRTHDAY WISH</span>
+        </header>
+        <div class="welcome__content">
+          <div class="welcome__dedication"><span></span>FOR SOMEONE SPECIAL<span></span></div>
+          <h1 id="welcome-title">生日礼物</h1>
+          <p class="welcome__script" lang="en">A little universe, just for you.</p>
+          <p class="welcome__message">把星光藏进这一刻，<br />把所有美好，都送给你。</p>
+          <button id="enter" class="primary-button" type="button">
+            <span>开启生日礼物</span>
+            <span class="primary-button__arrow" aria-hidden="true"><span class="glyph glyph--arrow"></span></span>
+          </button>
+        </div>
+        <footer class="invitation-footer">
+          <span class="invitation-footer__to">TO YOU <span class="footer-dash"></span> 特别的你</span>
+          <p>愿你被温柔以待，也被幸福偏爱。</p>
+          <span class="invitation-footer__signature" lang="en">With love, always.</span>
+        </footer>
       </section>
 
-      <header class="topbar" aria-label="场景控制">
-        <div class="brand-mark"><span class="brand-mark__dot"></span> BIRTHDAY / 01</div>
+      <header id="scene-controls" class="topbar" aria-label="场景控制" inert>
+        <div class="brand-mark"><span class="glyph glyph--sparkles" aria-hidden="true"></span> 星光来信</div>
         <div class="topbar__actions">
-          <button id="sound-toggle" class="icon-button" type="button" aria-label="关闭声音" title="关闭声音"><span class="sound-icon">◒</span></button>
-          <button id="mic-toggle" class="icon-button" type="button" aria-label="开启麦克风" title="开启麦克风"><span>⌁</span></button>
+          <button id="sound-toggle" class="icon-button" type="button" aria-label="关闭声音" title="关闭声音" aria-pressed="true"><span class="glyph glyph--volume" aria-hidden="true"></span></button>
+          <button id="mic-toggle" class="icon-button" type="button" aria-label="开启麦克风" title="开启麦克风" aria-pressed="false"><span class="glyph glyph--mic" aria-hidden="true"></span></button>
         </div>
       </header>
 
