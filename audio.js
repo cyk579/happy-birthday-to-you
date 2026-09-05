@@ -120,7 +120,7 @@ export class BirthdayAudio {
       const started = await this.start();
       if (!started || !this.audioContext) throw new Error("AudioContext unavailable");
       const stream = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: false },
+        audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: true },
       });
       // A permission prompt can outlive a user cancellation or page teardown.
       if (requestToken !== this._micRequestToken || this._disposed) {
@@ -132,7 +132,7 @@ export class BirthdayAudio {
       this.micSource = ctx.createMediaStreamSource(this.micStream);
       this.analyser = ctx.createAnalyser();
       this.analyser.fftSize = 1024;
-      this.analyser.smoothingTimeConstant = 0.72;
+      this.analyser.smoothingTimeConstant = 0.42;
       this.micSource.connect(this.analyser); // analyser has no destination connection
       this.timeData = new Float32Array(this.analyser.fftSize);
       this.frequencyData = new Float32Array(this.analyser.frequencyBinCount);
@@ -209,12 +209,12 @@ export class BirthdayAudio {
       return { strength: 0, ready: false };
     }
 
-    const rmsExcess = Math.max(0, rms - this._noiseFloor * 1.28 - 0.004);
-    const bandExcess = Math.max(0, band - this._bandFloor * 1.35 - 0.002);
-    const rmsScore = Math.min(1, rmsExcess / 0.13);
-    const bandScore = Math.min(1, bandExcess / 0.075);
-    const raw = Math.min(1, rmsScore * 0.68 + bandScore * 0.32);
-    const smoothing = 1 - Math.exp(-elapsed * 8);
+    const rmsExcess = Math.max(0, rms - this._noiseFloor * 1.12 - 0.0015);
+    const bandExcess = Math.max(0, band - this._bandFloor * 1.15 - 0.001);
+    const rmsScore = Math.min(1, rmsExcess / 0.075);
+    const bandScore = Math.min(1, bandExcess / 0.04);
+    const raw = Math.min(1, rmsScore * 0.74 + bandScore * 0.26);
+    const smoothing = 1 - Math.exp(-elapsed * 12);
     this._strength += (raw - this._strength) * smoothing;
     return { strength: Math.max(0, Math.min(1, this._strength)), ready: true };
   }
