@@ -20,10 +20,9 @@ export class BirthdayAudio {
     this._micState = "off";
     this._micMessage = "麦克风尚未开启";
     this._calibrationElapsed = 0;
-    this._calibrationRms = 0;
-    this._calibrationBand = 0;
-    this._noiseFloor = 0.018;
-    this._bandFloor = 0.012;
+    this._calibrationSamples = [];
+    this._noiseFloor = 0.00025;
+    this._bandFloor = 0.00001;
     this._strength = 0;
     this._muted = false;
     this._ducked = false;
@@ -121,8 +120,7 @@ export class BirthdayAudio {
       this.timeData = new Float32Array(this.analyser.fftSize);
       this.frequencyData = new Float32Array(this.analyser.frequencyBinCount);
       this._calibrationElapsed = 0;
-      this._calibrationRms = 0;
-      this._calibrationBand = 0;
+      this._calibrationSamples = [];
       this._strength = 0;
       this._setMicState("calibrating", "请保持安静，正在校准环境声音");
       return true;
@@ -147,6 +145,7 @@ export class BirthdayAudio {
     this.timeData = null;
     this.frequencyData = null;
     this._calibrationElapsed = 0;
+    this._calibrationSamples = [];
     this._strength = 0;
     if (announce) this._setMicState("off", "麦克风已暂停");
   }
@@ -181,28 +180,35 @@ export class BirthdayAudio {
     const band = bandCount ? bandSum / bandCount : 0;
 
     if (this._micState === "calibrating") {
-      const weight = Math.min(1, elapsed);
-      this._calibrationRms += rms * weight;
-      this._calibrationBand += band * weight;
+      this._calibrationSamples.push({ rms, band });
       this._calibrationElapsed += elapsed;
       if (this._calibrationElapsed >= 1) {
-        const duration = this._calibrationElapsed;
-        this._noiseFloor = Math.max(0.006, this._calibrationRms / duration);
-        this._bandFloor = Math.max(0.004, this._calibrationBand / duration);
-        this._setMicState("on", "正在聆听你的气息");
+        // A brief early breath must not become the permanent background threshold.
+        const quiet = this._calibrationSamples.sort((a, b) => a.rms - b.rms);
+        const baseline = quiet[Math.floor((quiet.length - 1) * 0.2)];
+        this._noiseFloor = Math.max(0.00025, baseline.rms);
+        this._bandFloor = Math.max(0.00001, baseline.band);
+        this._calibrationSamples = [];
+        this._setMicState("on", "已准备好，轻轻吹一口");
       }
       return { strength: 0, ready: false };
     }
 
-    const rmsExcess = Math.max(0, rms - this._noiseFloor * 1.12 - 0.0015);
-    const bandExcess = Math.max(0, band - this._bandFloor * 1.15 - 0.001);
-    const rmsScore = Math.min(1, rmsExcess / 0.045);
-    const bandScore = Math.min(1, bandExcess / 0.04);
-    const raw = Math.min(1, rmsScore * 0.74 + bandScore * 0.26);
-    const smoothing = 1 - Math.exp(-elapsed * 12);
+    // Recover quickly if startup noise or automatic mic gain raised the baseline.
+    const recovery = 1 - Math.exp(-elapsed * 4);
+    if (rms < this._noiseFloor) this._noiseFloor += (Math.max(0.00025, rms) - this._noiseFloor) * recovery;
+    if (band < this._bandFloor) this._bandFloor += (Math.max(0.00001, band) - this._bandFloor) * recovery;
+    const rmsExcess = Math.max(0, rms - this._noiseFloor);
+    const bandExcess = Math.max(0, band - this._bandFloor);
+    // Measure a small rise above this device's quiet level, rather than a fixed volume.
+    const breathing = rmsExcess > Math.max(0.0007, this._noiseFloor * 0.18);
+    const rmsScore = Math.min(1, rmsExcess / Math.max(0.004, this._noiseFloor * 0.8));
+    const bandScore = Math.min(1, bandExcess / Math.max(0.002, this._bandFloor));
+    const raw = Math.min(1, rmsScore * 0.82 + bandScore * 0.18);
+    const smoothing = 1 - Math.exp(-elapsed * 18);
     this._strength += (raw - this._strength) * smoothing;
     // Gate sustained breath from the current waveform, not the smoothed visual tail.
-    return { strength: Math.max(0, Math.min(1, this._strength)), breathing: rmsExcess > 0.006, ready: true };
+    return { strength: Math.max(0, Math.min(1, this._strength)), breathing, ready: true };
   }
 
   dispose() {

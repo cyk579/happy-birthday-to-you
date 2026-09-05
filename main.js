@@ -22,7 +22,7 @@ const handCursor=document.querySelector('#hand-cursor');
 const handContext=handOverlay.getContext('2d');
 
 let started=false,extinguished=false,muted=false,micState='off',musicState='idle',cameraState='off';
-let held=false,charge=0,breathDuration=0,holdDuration=0,previous=performance.now();
+let held=false,breathDuration=0,breathGap=0,holdDuration=0,previous=performance.now();
 let scene;
 const gestures=new GestureControls({
   onRotate:(yaw,pitch)=>scene?.rotateBy(yaw,pitch),
@@ -199,16 +199,17 @@ function frame(now) {
       scene.setBlowStrength(strength);
       if(held) {
         holdDuration+=dt;
-        charge=0;
         breathDuration=0;
+        breathGap=0;
         if(holdDuration>=.95) finish();
       } else {
         holdDuration=0;
-        // Half a second of current breath excludes a clap and its smoothed tail.
+        // A short gentle breath is enough. Tiny gaps do not discard its progress,
+        // but pauses and isolated clicks cannot accumulate toward extinguishing.
         const breathing=input.ready&&input.breathing;
-        breathDuration=breathing?breathDuration+dt:0;
-        charge=breathing?charge+dt*strength*3:Math.max(0,charge-dt*1.2);
-        if(breathDuration>=.5&&charge>=.5) finish();
+        if(breathing) {breathDuration+=dt;breathGap=0;}
+        else {breathGap+=dt;if(!input.ready||breathGap>.08)breathDuration=0;}
+        if(breathing&&breathDuration>=.24) finish();
       }
     }
     scene.update(dt);

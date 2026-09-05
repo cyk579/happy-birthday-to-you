@@ -1,5 +1,7 @@
 # Birthday Cake - Interactive Gift
 
+当前分享名称：[happy birthday to you](https://cyk579.github.io/birthday-cake/)，地址为 `https://cyk579.github.io/birthday-cake/`。
+
 一个可以直接部署到 GitHub Pages 的生日蛋糕互动网页。开场是一封星光邀请：银蓝与暖玫瑰色的星尘缓缓流动，本地字体与精简排版呈现生日祝福。点击「开启生日礼物」后，星尘散开，在同一个 Three.js 场景里逐渐显现没有底盘的两层粒子蛋糕。蛋糕与蜡烛持续缓慢旋转，微粒、光晕和火焰保持细微的动态。
 
 吹气交互由 Web Audio API 驱动。页面会在获得麦克风权限后分析气息强度，吹气越强，蜡烛火焰越弱；达到阈值后火焰熄灭，场景保留烟雾与粒子反馈，不显示独立的祝福弹层。无法使用麦克风时，可以在场景空白处长按约 0.9 秒触发备用熄灭入口。

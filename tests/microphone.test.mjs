@@ -23,14 +23,20 @@ function eventTarget() {
   };
 }
 
-async function createExperience({ microphone = true, musicFailure = false } = {}) {
+async function createExperience({
+  microphone = true,
+  musicFailure = false,
+  noiseRms = 0.006,
+  noiseBand = 0.001,
+  calibration = [{ seconds: 1 }],
+} = {}) {
   let now = 0;
   let nextFrame;
   let extinguishedAt = null;
   let stopped = false;
   let sceneDisposals = 0;
   const cameraCalls = { starts: 0, stops: 0, disposals: 0 };
-  const signal = { rms: 0.006, band: 0.001 };
+  const signal = { rms: noiseRms, band: noiseBand };
   const elements = new Map();
   const element = (selector) => {
     if (!elements.has(selector)) elements.set(selector, eventTarget());
@@ -145,14 +151,16 @@ async function createExperience({ microphone = true, musicFailure = false } = {}
   }
 
   // Advance the actual requestAnimationFrame loop, including audio.sample and finish.
-  const advance = (seconds, rms = 0.006, band = 0.001) => {
+  const advance = (seconds, rms = noiseRms, band = noiseBand) => {
     Object.assign(signal, { rms, band });
     for (let i = 0; i < Math.round(seconds * 60); i++) {
       now += 1000 / 60;
       nextFrame(now);
     }
   };
-  if (microphone) advance(1);
+  if (microphone) {
+    for (const step of calibration) advance(step.seconds, step.rms ?? noiseRms, step.band ?? noiseBand);
+  }
   return {
     advance,
     element,
@@ -165,7 +173,7 @@ async function createExperience({ microphone = true, musicFailure = false } = {}
   };
 }
 
-for (const [rms, minimum, limit] of [[0.02, 0.8, 1.2], [0.03, 0.5, 0.8], [0.04, 0.5, 0.8]]) {
+for (const [rms, minimum, limit] of [[0.009, 0.24, 0.5], [0.012, 0.24, 0.5], [0.02, 0.24, 0.5]]) {
   test(`sustained breath at RMS ${rms} extinguishes in ${minimum}-${limit}s`, async (t) => {
     const app = await createExperience();
     const startedAt = app.now;
@@ -189,6 +197,57 @@ test('a 100ms saturated pulse followed by silence does not extinguish', async ()
   app.advance(0.1, 1, 1);
   app.advance(3);
   assert.equal(app.extinguishedAt, null);
+});
+
+test('a 50ms dropout in a gentle breath does not discard all its progress', async (t) => {
+  const app = await createExperience();
+  const startedAt = app.now;
+  app.advance(0.15, 0.012, 0.002);
+  assert.equal(app.extinguishedAt, null);
+  app.advance(0.05);
+  assert.equal(app.extinguishedAt, null);
+  app.advance(0.2, 0.012, 0.002);
+  assert.notEqual(app.extinguishedAt, null, 'the second 200ms segment should retain the earlier gentle breath');
+  t.diagnostic(`Interrupted breath extinguished after ${((app.extinguishedAt - startedAt) / 1000).toFixed(3)}s.`);
+});
+
+test('separate 100ms saturated pulses with 150ms gaps cannot accumulate into a breath', async () => {
+  const app = await createExperience();
+  for (let pulse = 0; pulse < 8; pulse++) {
+    app.advance(0.1, 1, 1);
+    app.advance(0.15);
+    assert.equal(app.extinguishedAt, null, `pulse ${pulse + 1} must not extinguish the candle`);
+  }
+  app.advance(3);
+  assert.equal(app.extinguishedAt, null);
+});
+
+test('a low-gain microphone still detects a gentle breath above its quiet baseline', async (t) => {
+  const app = await createExperience({ noiseRms: 0.0008, noiseBand: 0.0001 });
+  app.advance(1);
+  assert.equal(app.extinguishedAt, null);
+  const startedAt = app.now;
+  app.advance(0.5, 0.002, 0.0003);
+  assert.notEqual(app.extinguishedAt, null, 'a low input gain must not make blowing impossible');
+  const elapsed = (app.extinguishedAt - startedAt) / 1000;
+  assert.ok(elapsed >= 0.239 && elapsed <= 0.5, `extinguished after ${elapsed}s`);
+  t.diagnostic(`Low-gain breath extinguished after ${elapsed.toFixed(3)}s.`);
+});
+
+test('brief blowing during calibration does not hide a later gentle breath', async (t) => {
+  const app = await createExperience({ calibration: [
+    { seconds: 0.2 },
+    { seconds: 0.2, rms: 0.04, band: 0.008 },
+    { seconds: 0.6 },
+  ] });
+  app.advance(0.5);
+  assert.equal(app.extinguishedAt, null, 'calibration noise must not trigger a delayed extinguish');
+  const startedAt = app.now;
+  app.advance(0.5, 0.009, 0.002);
+  assert.notEqual(app.extinguishedAt, null, 'an early puff must not permanently raise the noise floor');
+  const elapsed = (app.extinguishedAt - startedAt) / 1000;
+  assert.ok(elapsed >= 0.239 && elapsed <= 0.5, `extinguished after ${elapsed}s`);
+  t.diagnostic(`Breath after noisy calibration extinguished after ${elapsed.toFixed(3)}s.`);
 });
 
 test('manual hold needs longer than half a second and finishes within one second', async () => {
