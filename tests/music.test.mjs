@@ -14,7 +14,7 @@ const deferred = () => {
   return { promise, resolve };
 };
 
-async function createHarness() {
+async function createHarness({ failFirstFetch = false } = {}) {
   const download = deferred();
   const decode = deferred();
   const contexts = [];
@@ -60,7 +60,11 @@ async function createHarness() {
     console,
     AbortController,
     window: { AudioContext },
-    fetch: () => { fetchCount++; return download.promise; },
+    fetch: () => {
+      fetchCount++;
+      if (failFirstFetch && fetchCount === 1) return Promise.resolve({ ok: false, status: 503 });
+      return download.promise;
+    },
   });
   const musicModule = new vm.SourceTextModule(musicSource, { context, identifier: 'music.js' });
   const audioModule = new vm.SourceTextModule(audioSource, { context, identifier: 'audio.js' });
@@ -131,4 +135,24 @@ test('concurrent and later starts share one music playback source', async () => 
   assert.equal(context.sources.length, 1);
   assert.equal(context.sources[0].starts, 1, 'repeated start must not layer duplicate music');
   music.dispose();
+});
+
+test('turning music on retries a failed download without duplicate playback', async () => {
+  const harness = await createHarness({ failFirstFetch: true });
+  const states = [];
+  const audio = new harness.BirthdayAudio(undefined, ({ status }) => states.push(status));
+  await audio.start();
+  await settle();
+  const context = harness.contexts[0];
+  assert.ok(states.includes('error'));
+  assert.equal(context.sources.length, 0);
+  audio.setMuted(false);
+  harness.resolveDownload();
+  harness.decode.resolve({ duration: 180 });
+  await settle();
+  assert.equal(harness.fetchCount, 2);
+  assert.equal(context.sources.length, 1);
+  assert.equal(context.sources[0].starts, 1);
+  assert.equal(states.at(-1), 'playing');
+  audio.dispose();
 });

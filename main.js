@@ -12,7 +12,7 @@ const micStatus=document.querySelector('#mic-status');
 const instruction=document.querySelector('#instruction');
 
 let started=false,extinguished=false,muted=false,micState='off',musicState='idle';
-let held=false,charge=0,previous=performance.now();
+let held=false,charge=0,breathDuration=0,holdDuration=0,previous=performance.now();
 let scene;
 const audio=new BirthdayAudio(({status,message})=>{
   micState=status;
@@ -110,9 +110,19 @@ function frame(now) {
       const input=audio.sample(dt);
       const strength=held?1:input.strength;
       scene.setBlowStrength(strength);
-      // Sustained breath integrates over time; a single clap cannot extinguish the candle.
-      charge=strength>.18?charge+dt*(held?1:strength*2.2):Math.max(0,charge-dt*.8);
-      if(charge>=(held?.95:.68)) finish();
+      if(held) {
+        holdDuration+=dt;
+        charge=0;
+        breathDuration=0;
+        if(holdDuration>=.95) finish();
+      } else {
+        holdDuration=0;
+        // Half a second of current breath excludes a clap and its smoothed tail.
+        const breathing=input.ready&&input.breathing;
+        breathDuration=breathing?breathDuration+dt:0;
+        charge=breathing?charge+dt*strength*3:Math.max(0,charge-dt*1.2);
+        if(breathDuration>=.5&&charge>=.5) finish();
+      }
     }
     scene.update(dt);
   }

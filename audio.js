@@ -196,12 +196,13 @@ export class BirthdayAudio {
 
     const rmsExcess = Math.max(0, rms - this._noiseFloor * 1.12 - 0.0015);
     const bandExcess = Math.max(0, band - this._bandFloor * 1.15 - 0.001);
-    const rmsScore = Math.min(1, rmsExcess / 0.075);
+    const rmsScore = Math.min(1, rmsExcess / 0.045);
     const bandScore = Math.min(1, bandExcess / 0.04);
     const raw = Math.min(1, rmsScore * 0.74 + bandScore * 0.26);
     const smoothing = 1 - Math.exp(-elapsed * 12);
     this._strength += (raw - this._strength) * smoothing;
-    return { strength: Math.max(0, Math.min(1, this._strength)), ready: true };
+    // Gate sustained breath from the current waveform, not the smoothed visual tail.
+    return { strength: Math.max(0, Math.min(1, this._strength)), breathing: rmsExcess > 0.006, ready: true };
   }
 
   dispose() {

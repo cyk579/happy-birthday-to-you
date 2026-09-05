@@ -132,14 +132,14 @@ async function createExperience({ microphone = true, musicFailure = false } = {}
   };
 }
 
-for (const [rms, limit] of [[0.04, 1.5], [0.03, 2]]) {
-  test(`sustained breath at RMS ${rms} extinguishes within ${limit}s`, async (t) => {
+for (const [rms, minimum, limit] of [[0.02, 0.8, 1.2], [0.03, 0.5, 0.8], [0.04, 0.5, 0.8]]) {
+  test(`sustained breath at RMS ${rms} extinguishes in ${minimum}-${limit}s`, async (t) => {
     const app = await createExperience();
     const startedAt = app.now;
     app.advance(limit, rms, 0.002);
     assert.notEqual(app.extinguishedAt, null, 'gentle breath must extinguish the candle');
     const elapsed = (app.extinguishedAt - startedAt) / 1000;
-    assert.ok(elapsed <= limit, `extinguished after ${elapsed}s`);
+    assert.ok(elapsed >= minimum - 0.001 && elapsed <= limit, `extinguished after ${elapsed}s`);
     assert.equal(app.stopped, true, 'microphone is released after extinguishing');
     t.diagnostic(`Extinguished after ${elapsed.toFixed(3)}s of simulated breath.`);
   });
@@ -170,7 +170,7 @@ test('manual hold needs longer than half a second and finishes within one second
 
 test('music loading failure leaves microphone calibration and blowing usable', async () => {
   const app = await createExperience({ musicFailure: true });
-  app.advance(1.5, 0.04, 0.002);
+  app.advance(0.8, 0.04, 0.002);
   assert.notEqual(app.extinguishedAt, null, 'a failed soundtrack must not block blowing');
   assert.equal(app.stopped, true);
 });

@@ -31,7 +31,7 @@ export class AmbientMusic {
         if (!live()) return false;
         this._setState('loading');
         this._abortController = new AbortController();
-        const response = await fetch('./assets/starlight-piano.mp3', { signal: this._abortController.signal });
+        const response = await fetch('./assets/starlight-piano.mp3?v=bright-104', { signal: this._abortController.signal });
         if (!live()) return false;
         if (!response.ok) throw new Error('Music could not be loaded');
         const bytes = await response.arrayBuffer();
